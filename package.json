@@ -1,5 +1,5 @@
 {
-  "name": "@ranupod/trace",
+  "name": "@ranupod/ranutrace-node",
   "version": "1.0.0",
   "description": "Zero-code OpenTelemetry & APM distributed tracer for RanuPod",
   "main": "index.js",

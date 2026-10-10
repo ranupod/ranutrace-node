@@ -1,6 +1,6 @@
-// @ranupod/trace auto-registration script
-// Usage: node --require @ranupod/trace/register app.js
-// Or injected via NODE_OPTIONS="--require @ranupod/trace/register"
+// @ranupod/ranutrace-node auto-registration script
+// Usage: node --require @ranupod/ranutrace-node/register app.js
+// Or injected via NODE_OPTIONS="--require @ranupod/ranutrace-node/register"
 
 const { NodeSDK } = require('@opentelemetry/sdk-node');
 const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
