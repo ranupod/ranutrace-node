@@ -1,0 +1,20 @@
+{
+  "name": "@ranupod/trace",
+  "version": "1.0.0",
+  "description": "Zero-code OpenTelemetry & APM distributed tracer for RanuPod",
+  "main": "index.js",
+  "scripts": {
+    "test": "node register.js"
+  },
+  "keywords": ["ranupod", "tracing", "opentelemetry", "apm", "datadog"],
+  "author": "RanuPod Core Team",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.55.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/semantic-conventions": "^1.28.0"
+  }
+}
