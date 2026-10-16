@@ -114,6 +114,9 @@ if (shouldInjectConsole) {
   });
 }
 
+const { installRumHook, buildHtmlSnippet } = require('./rum');
+installRumHook();
+
 process.on('SIGTERM', () => {
   sdk.shutdown()
     .then(() => console.log('[RanuPod Trace] Tracing terminated gracefully'))
@@ -124,4 +127,5 @@ process.on('SIGTERM', () => {
 module.exports = {
   sdk,
   getTraceCorrelation,
+  buildHtmlSnippet,
 };
