@@ -59,7 +59,12 @@ function parseOpenObserveEndpoint() {
 }
 
 const ooConfig = parseOpenObserveEndpoint();
-const envName = resourceAttrs['deployment.environment'] || process.env.DD_ENV || process.env.NODE_ENV || 'production';
+const rawDeployEnv = resourceAttrs['deployment.environment'] || '';
+const envName =
+  (!/^[0-9a-f-]{36}$/i.test(rawDeployEnv) && rawDeployEnv) ||
+  process.env.DD_ENV ||
+  process.env.NODE_ENV ||
+  'production';
 const applicationId = resourceAttrs['project.id'] || serviceName;
 
 // Cached RUM clientToken fetched from OpenObserve /api/{orgId}/rumtoken
@@ -228,6 +233,7 @@ function proxyRumIntakeRequest(req, res) {
       const fwdHeaders = { ...req.headers };
       delete fwdHeaders.host;
       delete fwdHeaders.connection;
+      fwdHeaders['accept-encoding'] = 'identity';
 
       if (activeToken && (!fwdHeaders.authorization || fwdHeaders.authorization.includes('auto'))) {
         fwdHeaders.authorization = `Bearer ${activeToken}`;
