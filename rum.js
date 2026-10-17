@@ -1,7 +1,10 @@
 // @ranupod/ranutrace-node Real User Monitoring (RanuRUM) module
-// Uses the official OpenObserve Browser RUM & Browser Logs SDKs (@openobserve/browser-rum & @openobserve/browser-logs)
-// with automatic RUM token discovery + internal reverse proxy (/rum/v1/*) to bypass Mixed Content, CORS & private IP boundaries.
+// Bundles the official NPM @openobserve/browser-rum & @openobserve/browser-logs SDKs (v0.4.3)
+// into a single first-party bundle (/o2-sdk.js) with automatic rumtoken discovery and /rum/v1/* reverse proxy.
 
+const fs = require('fs');
+const path = require('path');
+const zlib = require('zlib');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
@@ -11,9 +14,15 @@ const proxyBasePath = (process.env.RANUPOD_RUM_PROXY_PATH || '/__ranurum').repla
 const sampleRate = parseFloat(process.env.RANUPOD_RUM_SAMPLE_RATE || '1.0');
 const serviceName = process.env.OTEL_SERVICE_NAME || process.env.DD_SERVICE || 'ranupod-node-app';
 const appVersion = process.env.DD_VERSION || process.env.npm_package_version || '1.0.0';
-
 const RUM_SDK_VERSION = '0.4.3';
-const CDN_HOST = 'https://browsersdk.openobserve.ai';
+
+// Load pre-bundled NPM @openobserve/browser-rum + @openobserve/browser-logs (with inline Session Replay recorder)
+let sdkBundleRaw = Buffer.from('');
+let sdkBundleGzip = Buffer.from('');
+try {
+  sdkBundleRaw = fs.readFileSync(path.join(__dirname, 'o2-bundle.min.js'));
+  sdkBundleGzip = zlib.gzipSync(sdkBundleRaw);
+} catch (e) {}
 
 // Parse OTEL_RESOURCE_ATTRIBUTES (e.g. deployment.environment=...,project.id=...,service.name=...,tenant.id=...)
 function parseKeyValuePairs(raw) {
@@ -32,7 +41,6 @@ const resourceAttrs = parseKeyValuePairs(process.env.OTEL_RESOURCE_ATTRIBUTES);
 const otlpHeaders = parseKeyValuePairs(process.env.OTEL_EXPORTER_OTLP_HEADERS);
 
 // Resolve OpenObserve root URL and organization identifier from OTEL_EXPORTER_OTLP_ENDPOINT
-// Example OTEL_EXPORTER_OTLP_ENDPOINT: http://192.10.1.9:5080/api/b79m4kaaeozc
 function parseOpenObserveEndpoint() {
   const raw = (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || 'http://192.10.1.9:5080/api/default')
     .replace(/\/v1\/traces\/?$/, '')
@@ -138,7 +146,7 @@ function fetchOrCreateRumToken(cb) {
   });
 }
 
-// Build the official OpenObserve Browser RUM + Browser Logs CDN snippet
+// Build first-party HTML snippet loading the bundled NPM @openobserve/browser-rum & @openobserve/browser-logs
 function buildHtmlSnippet() {
   const sessionSamplePct = Math.max(0, Math.min(100, Math.round(sampleRate * 100)));
   const clientToken = cachedRumToken || 'auto';
@@ -154,71 +162,11 @@ function buildHtmlSnippet() {
     sessionReplaySampleRate: sessionSamplePct,
   };
 
-  return `<script>
-(function(){
-  if(window.__RANURUM_O2_INIT__)return;
-  window.__RANURUM_O2_INIT__=true;
-  var c=${JSON.stringify(cfg)};
-  (function(h,o,u,n,d){
-    h=h[d]=h[d]||{q:[],onReady:function(cb){h.q.push(cb);}};
-    d=o.createElement(u);d.async=1;d.src=n;d.crossOrigin="anonymous";
-    n=o.getElementsByTagName(u)[0];
-    if(n&&n.parentNode)n.parentNode.insertBefore(d,n);
-    else(o.head||o.documentElement).appendChild(d);
-  })(window,document,"script","${CDN_HOST}/${RUM_SDK_VERSION}/openobserve-rum.js","O2_RUM");
-  (function(h,o,u,n,d){
-    h=h[d]=h[d]||{q:[],onReady:function(cb){h.q.push(cb);}};
-    d=o.createElement(u);d.async=1;d.src=n;d.crossOrigin="anonymous";
-    n=o.getElementsByTagName(u)[0];
-    if(n&&n.parentNode)n.parentNode.insertBefore(d,n);
-    else(o.head||o.documentElement).appendChild(d);
-  })(window,document,"script","${CDN_HOST}/${RUM_SDK_VERSION}/openobserve-logs.js","O2_LOGS");
-
-  var site=window.location.host+c.proxyBasePath;
-  var insecureHTTP=window.location.protocol==="http:";
-
-  O2_RUM.onReady(function(){
-    O2_RUM.init({
-      applicationId:c.applicationId,
-      clientToken:c.clientToken,
-      site:site,
-      organizationIdentifier:c.organizationIdentifier,
-      service:c.service,
-      env:c.env,
-      version:c.version,
-      trackResources:true,
-      trackLongTasks:true,
-      trackUserInteractions:true,
-      apiVersion:"v1",
-      insecureHTTP:insecureHTTP,
-      defaultPrivacyLevel:"allow",
-      allowedTracingUrls:[{match:window.location.origin,propagatorTypes:["openobserve","tracecontext"]}],
-      sessionSampleRate:c.sessionSampleRate,
-      sessionReplaySampleRate:c.sessionReplaySampleRate
-    });
-    O2_RUM.startSessionReplayRecording();
-  });
-
-  O2_LOGS.onReady(function(){
-    O2_LOGS.init({
-      clientToken:c.clientToken,
-      site:site,
-      organizationIdentifier:c.organizationIdentifier,
-      service:c.service,
-      env:c.env,
-      version:c.version,
-      forwardErrorsToLogs:true,
-      insecureHTTP:insecureHTTP,
-      apiVersion:"v1"
-    });
-  });
-})();
-</script>`;
+  return `<script>window.__RANURUM_O2_CONFIG__=${JSON.stringify(cfg)};</script><script src="${proxyBasePath}/o2-sdk.js?v=1.3.1" defer></script>`;
 }
 
 // Transparently proxy /__ranurum/rum/v1/{org}/* (rum, logs, replay) to OpenObserve
 function proxyRumIntakeRequest(req, res) {
-  // Strip /__ranurum prefix so /__ranurum/rum/v1/... becomes /rum/v1/...
   let downstreamPath = req.url.slice(proxyBasePath.length);
   if (!downstreamPath.startsWith('/')) downstreamPath = '/' + downstreamPath;
 
@@ -282,14 +230,14 @@ function proxyRumIntakeRequest(req, res) {
 
 /**
  * Patches Node's http.Server.prototype.emit to:
- * 1) Proxy /__ranurum/rum/v1/{org}/{rum|logs|replay} directly to OpenObserve's native RUM intake
- * 2) Auto-inject the official OpenObserve Browser RUM & Logs SDK loader into HTML responses
+ * 1) Serve the bundled NPM @openobserve/browser-rum + @openobserve/browser-logs at GET /__ranurum/o2-sdk.js
+ * 2) Proxy /__ranurum/rum/v1/{org}/{rum|logs|replay} directly to OpenObserve's native RUM intake
+ * 3) Auto-inject the first-party SDK <script> tag into HTML responses
  */
 function installRumHook() {
   if (!rumEnabled || http.Server.prototype.__ranurumPatched) return;
   http.Server.prototype.__ranurumPatched = true;
 
-  // Pre-fetch the organization's RUM clientToken at startup
   fetchOrCreateRumToken();
 
   const origEmit = http.Server.prototype.emit;
@@ -297,7 +245,30 @@ function installRumHook() {
     if (type === 'request' && req && res && typeof req.url === 'string') {
       const pathOnly = req.url.split('?')[0];
 
-      // Route 1: Proxy official OpenObserve Browser SDK intake (/rum/v1/{org}/rum, /logs, /replay)
+      // Route 1: Serve bundled NPM @openobserve/browser-rum & @openobserve/browser-logs
+      if (
+        req.method === 'GET' &&
+        (pathOnly === `${proxyBasePath}/o2-sdk.js` || pathOnly === `${proxyBasePath}/rum.js`)
+      ) {
+        const acceptEnc = String((req.headers && req.headers['accept-encoding']) || '');
+        if (acceptEnc.includes('gzip') && sdkBundleGzip.length > 0) {
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Content-Encoding': 'gzip',
+            'Cache-Control': 'public, max-age=3600',
+          });
+          res.end(sdkBundleGzip);
+        } else {
+          res.writeHead(200, {
+            'Content-Type': 'application/javascript; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+          });
+          res.end(sdkBundleRaw);
+        }
+        return true;
+      }
+
+      // Route 2: Proxy official OpenObserve Browser SDK intake (/rum/v1/{org}/rum, /logs, /replay)
       if (pathOnly.startsWith(`${proxyBasePath}/rum/`)) {
         if (req.method === 'OPTIONS') {
           res.writeHead(204, {
@@ -312,13 +283,13 @@ function installRumHook() {
         return true;
       }
 
-      // Route 2: Health/config inspection endpoint
+      // Route 3: Health/config inspection endpoint
       if (req.method === 'GET' && pathOnly === `${proxyBasePath}/status`) {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(
           JSON.stringify({
             status: 'ok',
-            sdk: '@openobserve/browser-rum',
+            sdk: '@openobserve/browser-rum + @openobserve/browser-logs (bundled NPM)',
             sdk_version: RUM_SDK_VERSION,
             org: ooConfig.orgId,
             service: serviceName,
@@ -329,7 +300,7 @@ function installRumHook() {
         return true;
       }
 
-      // Auto-inject official OpenObserve RUM + Logs SDK into HTML responses
+      // Auto-inject first-party bundled OpenObserve RUM + Logs SDK into HTML responses
       const origWrite = res.write;
       const origEnd = res.end;
       let injected = false;
