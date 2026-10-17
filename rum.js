@@ -162,7 +162,7 @@ function buildHtmlSnippet() {
     sessionReplaySampleRate: sessionSamplePct,
   };
 
-  return `<script>window.__RANURUM_O2_CONFIG__=${JSON.stringify(cfg)};</script><script src="${proxyBasePath}/o2-sdk.js?v=1.3.1" defer></script>`;
+  return `<script>window.__RANURUM_O2_CONFIG__=${JSON.stringify(cfg)};</script><script src="${proxyBasePath}/o2-sdk.js?v=1.3.2" defer></script>`;
 }
 
 // Transparently proxy /__ranurum/rum/v1/{org}/* (rum, logs, replay) to OpenObserve
@@ -247,7 +247,7 @@ function installRumHook() {
 
       // Route 1: Serve bundled NPM @openobserve/browser-rum & @openobserve/browser-logs
       if (
-        req.method === 'GET' &&
+        (req.method === 'GET' || req.method === 'HEAD') &&
         (pathOnly === `${proxyBasePath}/o2-sdk.js` || pathOnly === `${proxyBasePath}/rum.js`)
       ) {
         const acceptEnc = String((req.headers && req.headers['accept-encoding']) || '');
@@ -255,15 +255,15 @@ function installRumHook() {
           res.writeHead(200, {
             'Content-Type': 'application/javascript; charset=utf-8',
             'Content-Encoding': 'gzip',
-            'Cache-Control': 'public, max-age=3600',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
           });
-          res.end(sdkBundleGzip);
+          res.end(req.method === 'HEAD' ? undefined : sdkBundleGzip);
         } else {
           res.writeHead(200, {
             'Content-Type': 'application/javascript; charset=utf-8',
-            'Cache-Control': 'public, max-age=3600',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
           });
-          res.end(sdkBundleRaw);
+          res.end(req.method === 'HEAD' ? undefined : sdkBundleRaw);
         }
         return true;
       }
