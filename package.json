@@ -1,6 +1,6 @@
 {
   "name": "@ranupod/ranutrace-node",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Zero-code OpenTelemetry APM, Real User Monitoring (RanuRUM) & log correlation tracer for RanuPod",
   "main": "index.js",
   "scripts": {
